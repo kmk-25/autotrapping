@@ -2,6 +2,8 @@ import asyncio
 from valvecommands import valvecontroller
 import struct
 from nifpga import Session
+from time import sleep
+import numpy as np
 
 HOST = '171.64.56.233'
 PORT = 6340
@@ -20,30 +22,43 @@ def getlaserpower():
     Iz_bitshift = -3
 
     with Session(bitfile=BITFILEPATH, resource=RESOURCE) as sess:
-        lp = sess.registers["Iz_shifted"]
+        lp = sess.registers["Iz_shifted"].read()
         lp = (lp + pow_set) * (2**(-Iz_bitshift)*3.15e-6)
 
     return lp
 
 async def connect_to_server():
+    global reader
+    global writer
     reader, writer = await asyncio.open_connection(HOST, PORT)
     print(f'Connected to {HOST}:{PORT}')
     return reader, writer
 
 async def setlaserpower_trap(lpow):
-    lpow_bytes = struct.pack('>d', lpow)
-    lpow_bytes = bytes(lpow_bytes)
+    lpow_cur = getlaserpower()
+    while abs(lpow_cur - lpow) > 1:
+        writer.write('l'.encode())
+        await writer.drain()
 
-    writer.write('l'.encode())
-    await writer.drain()
-    writer.write(lpow_bytes)
-    await writer.drain()
+        curpow_dbm = await reader.read(8)
+        curpow_dbm = struct.unpack('>d', curpow_dbm)[0]
+
+        targpow = np.log10(lpow/lpow_cur) * 10 + curpow_dbm
+        targpow_bytes = struct.pack('>d', targpow)
+        targpow_bytes = bytes(targpow_bytes)
+        writer.write(targpow_bytes)
+        await writer.drain()
+
+        await waitforstop()
+        lpow_cur = getlaserpower()
 
 async def setpressure(press, slowroughing=False):
     press_bytes = struct.pack('>d', press)
     press_bytes = bytes(press_bytes)
 
-    writer.write('l'.encode())
+    writer.write('p'.encode())
+    await writer.drain()
+    writer.write('n'.encode())
     await writer.drain()
     writer.write(press_bytes)
     await writer.drain()
@@ -52,22 +67,28 @@ async def setpressure(press, slowroughing=False):
     if command == 'l':
         vc['LeakValve'] = True
     if command == 'v':
-        vc['VacuumValve'] = True
+        if slowroughing: vc['SlowRoughing'] = True
+        else: vc['VacuumValve'] = True
     
-    breakmess = None
-    while breakmess != "s":
-        breakmess = (await reader.read(1)).decode()
+    await waitforstop()
     
     for valve in vc.keys():
         vc[valve] = False
 
+    await waitforstop()
 
 
-async def mainloop():
-
-
-
-
+async def waitforstop():
+    print("Waiting for end")
     breakmess = None
     while breakmess != "s":
         breakmess = (await reader.read(1)).decode()
+        print(f"Message recieved: {breakmess}")
+
+
+async def mainloop():
+    pass
+
+
+
+
