@@ -19,12 +19,19 @@ async def tcp_server(host=HOST, port=PORT):
     lv = leakvalvecontroller()
     trapbeam = SG382('169.254.0.2')
 
-    async def setlaserpower_trap(pow):
-        trapbeam.setAmplitude(pow)
-        if not trapbeam.getRFon():
-            trapbeam.RFon()
+    def setlaserpower_trap(pow):
+        if pow < -8 and pow > -18:
+            trapbeam.setAmplitude(pow)
+            if not trapbeam.getRFon():
+                trapbeam.RFon()
+        else:
+            raise ValueError("Invalid laser power")
 
-    async def get_pressure():
+    def getlaserpower_trap():
+        trapbeam.getAmplitude()
+        return float(trapbeam.amp)
+
+    def get_pressure():
         return lv.pressure
 
     async def bringindevices():
@@ -37,6 +44,7 @@ async def tcp_server(host=HOST, port=PORT):
         return take_image_std()
 
     async def handle_client(reader, writer):
+        print("Connected to client")
         sending = False
         async def leaktopressure(writer, targetpressure, nom=None, thresh=0.01):
             if nom is not None: lv.nom = nom
@@ -52,7 +60,7 @@ async def tcp_server(host=HOST, port=PORT):
             if press > targetpressure*(1+thresh):
                 writer.write('v'.encode())
                 await writer.drain()
-                while press < targetpressure:
+                while press > targetpressure:
                     await asyncio.sleep(READDELAY)
                     press = get_pressure()
 
@@ -64,17 +72,17 @@ async def tcp_server(host=HOST, port=PORT):
                 std = await takestd()
                 std_bytes = struct.pack('>d', std)
                 std_bytes = bytes(std_bytes)
-                length = struct.pack('!I', len(std_bytes))
-                writer.write(length)
-                await writer.drain()
                 writer.write(std_bytes)
                 await writer.drain()
                 await asyncio.sleep(READDELAY)
 
         try:
             while True:
+                print("awaiting command")
                 data = await reader.read(1)
                 command = data.decode()
+
+                print(f"Command recieved: {command}")
 
                 # SEND CAMERA STD UNTIL TOLD STOP
                 if command == "d":
@@ -95,10 +103,18 @@ async def tcp_server(host=HOST, port=PORT):
                     if setnom == 'y':
                         nomval = await reader.read(8)
                         nomval = struct.unpack('>d', nomval)[0]
-                    leaktopressure(writer, targetpress, nomval)
+                    await leaktopressure(writer, targetpress, nomval)
                     
                 # SET TRAP BEAM POWER. TURN ON
                 if command == 'l':
+
+                    curpow = getlaserpower_trap()
+                    print(curpow)
+                    curpow_bytes = struct.pack('>d', curpow)
+                    curpow_bytes = bytes(curpow_bytes)
+                    writer.write(curpow_bytes)
+                    await writer.drain()
+
                     lpow = await reader.read(8)
                     lpow = struct.unpack('>d', lpow)[0]
                     setlaserpower_trap(lpow)
