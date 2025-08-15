@@ -20,16 +20,16 @@ class SG382:
         try:
             self.SG382 = telnetlib.Telnet(ip, port)
             print(f'Connection established to {ip}:{port}')
-            # Do the read a couple of times...
-            for ii in range(3):
-                self.getAmplitude()
-                self.getFrequency()
+            sleep(0.1)
+            self.SG382.read_eager() # clears the message signalling connection before starting communication
+            self.getAmplitude()
+            self.getFrequency()
             # Finally, clear the error...
             sleep(1)
             self.clearError()
         except:
             print(f'SG382 cannot be reached at {ipAddr}:{port}')
-            sys.exit(0) 
+            sys.exit(0)
 
         self.ramping = False
 

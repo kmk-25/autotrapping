@@ -26,7 +26,7 @@ class pyvisaDevice():
         self.instrument.close()
 
 class leakvalvecontroller(pyvisaDevice):
-    def __init__(self, portnum=5, nom=5e-2):
+    def __init__(self, portnum=5, nom=2e-1):
         super().__init__(portnum)
         self.nom = nom
 
