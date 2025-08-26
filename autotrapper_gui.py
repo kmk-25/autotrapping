@@ -92,7 +92,7 @@ class AutoTrapperGUI(QWidget):
             self.status_label.setText(f"Laser power set to {lpow}")
 
     def set_pressure(self):
-        press, ok = QInputDialog.getDouble(self, "Set Pressure", "Pressure (mBar):", 0.0, 0.0, 10.0, 6)
+        press, ok = QInputDialog.getDouble(self, "Set Pressure", "Pressure (mBar):", 1e-2, 1e-2, 1000, 3)
         if not ok:
             return
         slowroughing, ok2 = QInputDialog.getItem(self, "Slow Roughing", "Use Slow Roughing?", ["No", "Yes"], 0, False)
